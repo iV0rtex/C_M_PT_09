@@ -58,15 +58,63 @@ protected:
 	/** Handler for when a touch input stops. */
 	void TouchStopped(ETouchIndex::Type FingerIndex, FVector Location);
 
+	UPROPERTY(EditDefaultsOnly,Category="Health")
+	float MaxHealth;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CurrentHealth)
+	float CurrentHealth;
+
+	UPROPERTY(EditDefaultsOnly, Category="Gameplay|Projectile")
+	TSubclassOf<class AThirdPersonMPProjectile> ProjectileClass;
+
+	UPROPERTY(EditDefaultsOnly, Category="Gameplay")
+	float FireRate;
+
+	bool bIsFiringWeapon;
+
+
 protected:
 	// APawn interface
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	// End of APawn interface
+
+	UFUNCTION()
+	void OnRep_CurrentHealth();
+
+	void OnHealthUpdate();
+
+	UFUNCTION(BlueprintCallable, Category="Gameplay")
+	void StartFire();
+
+	UFUNCTION(BlueprintCallable, Category = "Gameplay")
+	void StopFire();
+
+	UFUNCTION(Server, Reliable)
+	void HandleFire();
+
+	FTimerHandle FiringTimer;
 
 public:
 	/** Returns CameraBoom subobject **/
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	UFUNCTION(BlueprintPure,Category="Health")
+	FORCEINLINE float GetMaxHealth() const {return MaxHealth; }
+
+	UFUNCTION(BlueprintPure,Category="Health")
+	FORCEINLINE float GetCurrentHealth() const {return CurrentHealth; }
+
+	UFUNCTION(BlueprintCallable,Category="Health")
+	void SetCurrentHealth(float healthValue);
+
+	UFUNCTION(BlueprintCallable,Category="Health")
+	virtual float TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
+
+	virtual void BeginPlay() override;
+	
 };
 

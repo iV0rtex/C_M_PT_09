@@ -8,6 +8,10 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Net/UnrealNetwork.h"
+#include "Engine/Engine.h"
+#include "ThirdPersonMPProjectile.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 //////////////////////////////////////////////////////////////////////////
 // AC_M_PT_09Character
@@ -45,6 +49,13 @@ AC_M_PT_09Character::AC_M_PT_09Character()
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named MyCharacter (to avoid direct content references in C++)
+
+	MaxHealth = 100.f;
+	CurrentHealth = MaxHealth;
+
+	ProjectileClass = AThirdPersonMPProjectile::StaticClass();
+	FireRate = 0.25f;
+	bIsFiringWeapon = false;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -74,6 +85,89 @@ void AC_M_PT_09Character::SetupPlayerInputComponent(class UInputComponent* Playe
 
 	// VR headset functionality
 	PlayerInputComponent->BindAction("ResetVR", IE_Pressed, this, &AC_M_PT_09Character::OnResetVR);
+
+	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &ThisClass::StartFire);
+}
+
+void AC_M_PT_09Character::OnRep_CurrentHealth()
+{
+	OnHealthUpdate();
+}
+
+void AC_M_PT_09Character::OnHealthUpdate()
+{
+	if(IsLocallyControlled())
+	{
+		FString HealthMessage = FString::Printf(TEXT("You now have %f health remaining."), CurrentHealth);
+		UKismetSystemLibrary::PrintString(this,HealthMessage,true,true,FColor::Blue,5.f);
+		if(CurrentHealth <= 0)
+		{
+			FString DeathMessage = FString::Printf(TEXT("You have been killed"));
+			UKismetSystemLibrary::PrintString(this,DeathMessage,true,true,FColor::Blue,5.f);
+		}
+	}
+	if(GetLocalRole() == ROLE_Authority)
+	{
+		FString SHealthMessage = FString::Printf(TEXT("%s now has %f health remaining."),*GetFName().ToString(), CurrentHealth);
+		UKismetSystemLibrary::PrintString(this,SHealthMessage,true,true,FColor::Blue,5.f);
+	}
+}
+
+void AC_M_PT_09Character::StartFire()
+{
+	if (!bIsFiringWeapon) //This check is on client side. So client is able to change bIsFiringWeapon variable and firing non stop=)
+	{
+		bIsFiringWeapon = true;
+		GetWorld()->GetTimerManager().SetTimer(FiringTimer, this, &ThisClass::StopFire, FireRate, false);
+		HandleFire();
+	}
+}
+
+void AC_M_PT_09Character::StopFire()
+{
+	bIsFiringWeapon = false;
+}
+
+void AC_M_PT_09Character::HandleFire_Implementation()
+{
+	FVector spawnLocation = GetActorLocation() + ( GetControlRotation().Vector()  * 100.0f ) + (GetActorUpVector() * 50.0f);
+	FRotator spawnRotation = GetControlRotation();
+
+	FActorSpawnParameters spawnParameters;
+	spawnParameters.Instigator = GetInstigator();
+	spawnParameters.Owner = this;
+	AThirdPersonMPProjectile* spawnedProjectile = GetWorld()->SpawnActor<AThirdPersonMPProjectile>(spawnLocation, spawnRotation, spawnParameters);
+}
+
+void AC_M_PT_09Character::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AC_M_PT_09Character,CurrentHealth);
+}
+
+void AC_M_PT_09Character::SetCurrentHealth(float healthValue)
+{
+	if(GetLocalRole() == ROLE_Authority)
+	{
+		CurrentHealth = FMath::Clamp(healthValue,0.f,MaxHealth);
+		OnHealthUpdate();
+	}
+}
+
+float AC_M_PT_09Character::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator,
+	AActor* DamageCauser)
+{
+	float DamageApplied = CurrentHealth - DamageAmount;
+	SetCurrentHealth(DamageApplied);
+	
+	return DamageApplied;
+}
+
+void AC_M_PT_09Character::BeginPlay()
+{
+	Super::BeginPlay();
+	
 }
 
 
